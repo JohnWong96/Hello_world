@@ -137,7 +137,7 @@ CASE
 	WHEN extras LIKE '%null%' THEN ' '
 	ELSE extras
 END AS extras,
-order_date
+order_time
 FROM pizza_runner.customer_orders;
 
 ---The datatype for pickup_time, distance and duration column in runner_order table need to be alter. pickup_time, distance, duration and cancellation column will also need to clean up.--
