@@ -255,8 +255,36 @@ ORDER BY tco.customer_id;
 
 --8)How many pizzas were delivered that had both exclusions and extras?--
 
+SELECT tro.order_id,
+SUM (
+CASE
+	WHEN tco.exclusions !='' AND tco.extras != '' THEN 1
+	ELSE 0
+	END
+       ) AS exclusions_and_extras
+FROM t_customer_orders tco
+JOIN t_runner_orders tro
+	ON tco.order_id=tro.order_id
+WHERE tro.distance>0
+GROUP BY tro.order_id
+ORDER BY exclusions_and_extras DESC LIMIT 1;
 
 
 --9)What was the total volume of pizzas ordered for each hour of the day?--
+
+SELECT 
+DATE_PART('hour',order_time) AS hour_of_the_day,
+COUNT(pizza_id)
+FROM t_customer_orders
+GROUP BY hour_of_the_day
+ORDER BY hour_of_the_day;
+
 --10)What was the volume of orders for each day of the week?--  
+
+SELECT 
+DATE_PART('dow',order_time) AS day_of_the_week,
+COUNT(pizza_id)
+FROM t_customer_orders
+GROUP BY day_of_the_week
+ORDER BY day_of_the_week;
   
