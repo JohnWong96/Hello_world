@@ -365,3 +365,29 @@ FROM t_runner_orders tro
 	JOIN t_customer_orders tco
 		ON tro.order_id=tco.order_id
 GROUP BY runner_id;
+----------------------------------------------Ingredient Optimisation-----------------------------------------------------
+---------The array in pizza_topping need to be unnested before proceeding. I will create a temporary table for that---------
+
+CREATE TEMP TABLE t_pizza_toppings AS
+SELECT topping_id,
+UNNEST (ARRAY[topping_name]) AS unnest_topping
+FROM pizza_runner.pizza_toppings;
+
+
+--1)What are the standard ingredients for each pizza?
+
+SELECT * from t_pizza_toppings
+
+--2)What was the most commonly added extra?
+--3)What was the most common exclusion?
+--4)Generate an order item for each record in the customers_orders table in the format of one of the following:
+--Meat Lovers
+--Meat Lovers - Exclude Beef
+--Meat Lovers - Extra Bacon
+--Meat Lovers - Exclude Cheese, Bacon - Extra Mushroom, Peppers
+--5)Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
+--6)For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
+--7)What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
+
+
+
