@@ -128,13 +128,13 @@ order_id,
 customer_id,
 pizza_id,
 CASE 
-	WHEN exclusions IS NULL THEN ' '
-	WHEN exclusions LIKE '%null%' THEN ' '
+	WHEN exclusions = '' THEN NULL
+	WHEN exclusions LIKE '%null%' THEN NULL
 	ELSE exclusions
 END AS exclusions,
 CASE
-	WHEN extras IS NULL THEN ' '
-	WHEN extras LIKE '%null%' THEN ' '
+	WHEN extras = '' THEN NULL
+	WHEN extras LIKE '%null%' THEN NULL
 	ELSE extras
 END AS extras,
 order_time
@@ -165,7 +165,7 @@ CASE
    	ELSE duration
  END AS duration,
  CASE 
- 	WHEN cancellation IS NULL THEN ' '
+ 	WHEN cancellation =' ' THEN NULL
     	WHEN cancellation LIKE '%null%' THEN ' '
     	ELSE cancellation
  END AS cancellation
@@ -368,17 +368,33 @@ GROUP BY runner_id;
 ----------------------------------------------Ingredient Optimisation-----------------------------------------------------
 ---------The array in pizza_topping need to be unnested before proceeding. I will create a temporary table for that---------
 
-CREATE TEMP TABLE t_pizza_toppings AS
-SELECT topping_id,
-UNNEST (ARRAY[topping_name]) AS unnest_topping
-FROM pizza_runner.pizza_toppings;
+CREATE TEMP TABLE t_pizza_recipes AS
+SELECT pizza_id,
+UNNEST (STRING_TO_ARRAY(toppings,', '))::INT AS toppings
+FROM pizza_runner.pizza_recipes;
 
 
 --1)What are the standard ingredients for each pizza?
 
-SELECT * from t_pizza_toppings
+SELECT pn.pizza_name, pt.topping_name
+FROM t_pizza_recipes tpz
+JOIN pizza_runner.pizza_names pn
+	ON tpz.pizza_id=pn.pizza_id
+JOIN pizza_runner.pizza_toppings pt
+	ON tpz.toppings= pt.topping_id;
 
 --2)What was the most commonly added extra?
+ 
+SELECT topping_name,COUNT(extras) OVER (PARTITION BY topping_name) AS most_extra
+FROM(
+SELECT order_id,
+UNNEST(STRING_TO_ARRAY(extras,', '))::INT AS extras
+FROM t_customer_orders) AS unnest_customer_orders 
+JOIN pizza_runner.pizza_toppings pt
+	ON unnest_customer_orders.extras=pt.topping_id
+ORDER BY most_extra DESC LIMIT 1;
+
+
 --3)What was the most common exclusion?
 --4)Generate an order item for each record in the customers_orders table in the format of one of the following:
 --Meat Lovers
@@ -388,6 +404,3 @@ SELECT * from t_pizza_toppings
 --5)Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
 --6)For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
 --7)What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
-
-
-
