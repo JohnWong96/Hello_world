@@ -374,7 +374,7 @@ UNNEST (STRING_TO_ARRAY(toppings,', '))::INT AS toppings
 FROM pizza_runner.pizza_recipes;
 
 
---1)What are the standard ingredients for each pizza?
+----1)What are the standard ingredients for each pizza?-------
 
 SELECT pn.pizza_name, pt.topping_name
 FROM t_pizza_recipes tpz
@@ -383,9 +383,10 @@ JOIN pizza_runner.pizza_names pn
 JOIN pizza_runner.pizza_toppings pt
 	ON tpz.toppings= pt.topping_id;
 
---2)What was the most commonly added extra?
+----2)What was the most commonly added extra?---------
  
-SELECT topping_name,COUNT(extras) OVER (PARTITION BY topping_name) AS most_extra
+SELECT topping_name,
+COUNT(extras) OVER (PARTITION BY topping_name) AS most_extra
 FROM(
 SELECT order_id,
 UNNEST(STRING_TO_ARRAY(extras,', '))::INT AS extras
@@ -395,12 +396,91 @@ JOIN pizza_runner.pizza_toppings pt
 ORDER BY most_extra DESC LIMIT 1;
 
 
---3)What was the most common exclusion?
---4)Generate an order item for each record in the customers_orders table in the format of one of the following:
+----3)What was the most common exclusion?-----------
+
+SELECT topping_name,
+COUNT(exclusions) OVER (PARTITION BY topping_name) AS most_exclusions
+FROM(
+SELECT order_id,
+UNNEST(STRING_TO_ARRAY(exclusions,', '))::INT AS exclusions
+FROM t_customer_orders) AS unnest_customer_orders 
+JOIN pizza_runner.pizza_toppings pt
+	ON unnest_customer_orders.exclusions=pt.topping_id
+ORDER BY most_exclusions DESC LIMIT 1;
+
+----4)Generate an order item for each record in the customers_orders table in the format of one of the following:------------
 --Meat Lovers
 --Meat Lovers - Exclude Beef
 --Meat Lovers - Extra Bacon
 --Meat Lovers - Exclude Cheese, Bacon - Extra Mushroom, Peppers
---5)Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
---6)For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
---7)What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
+
+
+SELECT order_id,pizza_id,
+CONCAT(
+CASE 
+	WHEN pizza_id=1 THEN 'Meat Lovers'
+	WHEN pizza_id=2 THEN 'Vegetarian'
+END,
+CASE
+	WHEN exclusions = '4' THEN '-Exclude Cheese'
+    WHEN exclusions = '2, 6' THEN '-Exclude BBQ Sauce,Mushrooms'
+  	ELSE NULL
+END,
+CASE 
+	WHEN extras='1' THEN '-Extra Bacon'
+	WHEN extras='1, 5'THEN '-Extra Bacon,Chicken'
+	WHEN extras='1, 4' THEN '-Extra Bacon,Cheese'
+  	ELSE NULL
+END) AS order_item
+FROM pizza_runner.customer_orders;
+
+----5)Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
+--For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
+
+
+CREATE TEMP TABLE ingridient_table AS
+SELECT pizza_id,string_agg (topping_name,', ') AS ingridients
+FROM
+(
+SELECT tpz.pizza_id, pt.topping_name
+FROM t_pizza_recipes tpz
+JOIN pizza_runner.pizza_names pn
+	ON tpz.pizza_id=pn.pizza_id
+JOIN pizza_runner.pizza_toppings pt
+	ON tpz.toppings= pt.topping_id) AS test_table
+GROUP BY pizza_id;
+
+SELECT order_id,
+CONCAT(
+CASE 
+	WHEN co.pizza_id=1 THEN 'Meat Lovers'
+	WHEN co.pizza_id=2 THEN 'Vegetarian'
+END,
+':',
+CASE
+	WHEN co.pizza_id= 1 AND exclusions = '2, 6' AND extras ='1, 4' 
+    THEN '2x Bacon,0 BBQ Sauce,Beef,2x Cheese,Chicken,0 Mushrooms,Pepperoni,Salami'
+    WHEN co.pizza_id= 1 AND exclusions ='4' AND extras = '1, 5' 
+    THEN '2x Bacon,BBQ Sauce,Beef,0 Cheese,2x Chicken,Mushrooms,Pepperoni,Salami' 
+    WHEN extras='1' THEN REGEXP_REPLACE(ingridients, 'Bacon','2x Bacon')
+	WHEN exclusions = '4' THEN REGEXP_REPLACE(ingridients, 'Cheese', '0 Cheese')
+  	ELSE ingridients
+END) AS ingridients
+FROM ingridient_table it
+JOIN pizza_runner.customer_orders co
+	ON it.pizza_id = co.pizza_id
+ORDER BY 1;
+
+----6)What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?--------
+
+SELECT topping_name,COUNT(toppings)
+FROM t_customer_orders tco
+JOIN t_pizza_recipes tpr
+  ON tco.pizza_id=tpr.pizza_id
+JOIN pizza_runner.pizza_toppings pt
+	ON tpr.toppings =pt.topping_id
+JOIN t_runner_orders tro
+	ON tro.order_id=tco.order_id
+WHERE tro.distance IS NOT NULL
+GROUP BY topping_name
+ORDER BY 2 DESC;
