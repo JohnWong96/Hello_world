@@ -1,0 +1,198 @@
+-----------------------------------------------
+-------------SQL 8 Week Challenge--------------
+--https://8weeksqlchallenge.com/case-study-1/--
+-----------------------------------------------
+
+CREATE SCHEMA dannys_diner;
+SET search_path = dannys_diner;
+
+CREATE TABLE sales (
+  "customer_id" VARCHAR(1),
+  "order_date" DATE,
+  "product_id" INTEGER
+);
+
+INSERT INTO sales
+  ("customer_id", "order_date", "product_id")
+VALUES
+  ('A', '2021-01-01', '1'),
+  ('A', '2021-01-01', '2'),
+  ('A', '2021-01-07', '2'),
+  ('A', '2021-01-10', '3'),
+  ('A', '2021-01-11', '3'),
+  ('A', '2021-01-11', '3'),
+  ('B', '2021-01-01', '2'),
+  ('B', '2021-01-02', '2'),
+  ('B', '2021-01-04', '1'),
+  ('B', '2021-01-11', '1'),
+  ('B', '2021-01-16', '3'),
+  ('B', '2021-02-01', '3'),
+  ('C', '2021-01-01', '3'),
+  ('C', '2021-01-01', '3'),
+  ('C', '2021-01-07', '3');
+ 
+
+CREATE TABLE menu (
+  "product_id" INTEGER,
+  "product_name" VARCHAR(5),
+  "price" INTEGER
+);
+
+INSERT INTO menu
+  ("product_id", "product_name", "price")
+VALUES
+  ('1', 'sushi', '10'),
+  ('2', 'curry', '15'),
+  ('3', 'ramen', '12');
+  
+
+CREATE TABLE members (
+  "customer_id" VARCHAR(1),
+  "join_date" DATE
+);
+
+INSERT INTO members
+  ("customer_id", "join_date")
+VALUES
+  ('A', '2021-01-07'),
+  ('B', '2021-01-09');
+  
+  
+--Case Study question--
+-- 1. What is the total amount each customer spent at the restaurant?
+
+SELECT sales.customer_id, SUM(menu.price)
+FROM dannys_diner.sales 
+    JOIN dannys_diner.menu 
+      ON sales.product_id = menu.product_id
+GROUP BY customer_id
+
+-- 2. How many days has each customer visited the restaurant?
+
+SELECT customer_id,COUNT(DISTINCT (order_date))
+FROM dannys_diner.sales
+GROUP BY customer_id;
+
+-- 3. What was the first item from the menu purchased by each customer?
+
+SELECT customer_id,product_name
+FROM (
+    WITH temp_table AS(
+    SELECT sales.customer_id,sales.order_date,menu.product_name,
+    DENSE_RANK() OVER(PARTITION BY sales.customer_id ORDER BY sales.order_date) AS rank_order
+    FROM dannys_diner.sales
+        JOIN dannys_diner.menu 
+            ON dannys_diner.sales.product_id = dannys_diner.menu.product_id
+          ) 
+SELECT * FROM temp_table) AS rank_table
+WHERE rank_order = 1
+GROUP BY customer_id,product_name;
+
+
+-- 4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+
+SELECT menu.product_name, COUNT(sales.product_id) AS most_purchased
+FROM dannys_diner.sales 
+	JOIN dannys_diner.menu
+		ON sales.product_id = menu.product_id
+GROUP BY sales.product_id,product_name
+ORDER BY most_purchased DESC LIMIT 1;
+
+-- 5. Which item was the most popular for each customer?
+
+SELECT customer_id,product_name,fav_product
+FROM (
+		WITH temp_table AS(
+  		SELECT sales.customer_id,menu.product_name, COUNT(sales.product_id) AS fav_product,
+		DENSE_RANK() OVER(PARTITION BY customer_id ORDER BY COUNT(sales.product_id) DESC) AS rank_order
+  		FROM dannys_diner.sales 
+			JOIN dannys_diner.menu
+				ON sales.product_id = menu.product_id
+ 		GROUP BY sales.customer_id,menu.product_name
+        )
+  
+SELECT * FROM temp_table) AS rank_table
+WHERE rank_order=1 
+GROUP BY customer_id, product_name,fav_product;
+
+-- 6. Which item was purchased first by the customer after they became a member?
+
+SELECT customer_id, product_name
+FROM (
+		WITH temp_table AS (SELECT customer_id,product_name,order_date,
+		DENSE_RANK() OVER (PARTITION BY sales.customer_id ORDER BY order_date) AS rank_order
+		FROM dannys_diner.sales 
+			JOIN dannys_diner.menu 
+				ON dannys_diner.sales.product_id = dannys_diner.menu.product_id
+		GROUP BY customer_id,product_name,order_date
+      )
+SELECT * FROM temp_table) AS rank_table
+WHERE rank_order=1
+GROUP BY customer_id, product_name;
+
+-- 7. Which item was purchased just before the customer became a member?
+
+SELECT customer_id,  string_agg(product_name,', ')
+FROM (
+  	WITH temp_table AS (SELECT sales.customer_id,product_name,
+        DENSE_RANK() OVER(PARTITION BY sales.customer_id ORDER BY order_date DESC) AS rank_order
+	FROM dannys_diner.sales 
+		JOIN dannys_diner.menu 
+			ON dannys_diner.sales.product_id = dannys_diner.menu.product_id
+    		JOIN dannys_diner.members
+    			ON dannys_diner.sales.customer_id= dannys_diner.members.customer_id
+	WHERE join_date>order_date
+	GROUP BY sales.customer_id,product_name,order_date
+	)
+SELECT * FROM temp_table) AS rank_table
+WHERE rank_order =1
+GROUP BY customer_id;
+
+-- 8. What is the total items and amount spent for each member before they became a member?
+
+SELECT sales.customer_id,COUNT(order_date) AS "total items",SUM(price) AS "amount spent"
+FROM dannys_diner.sales 
+	JOIN dannys_diner.menu 
+		ON dannys_diner.sales.product_id = dannys_diner.menu.product_id
+    	JOIN dannys_diner.members
+    		ON dannys_diner.sales.customer_id= dannys_diner.members.customer_id
+WHERE join_date>order_date
+GROUP BY sales.customer_id;
+
+-- 9.  If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+
+SELECT customer_id, SUM(points) AS "total_point"
+FROM (
+  	WITH temp_table AS (SELECT product_id,
+	CASE
+		WHEN product_name = 'sushi' THEN price*10*2
+		ELSE price*10
+	END AS "points"
+	FROM dannys_diner.menu 
+	GROUP BY product_id,product_name,price
+	)
+SELECT * FROM temp_table) AS point_table
+	JOIN dannys_diner.sales 
+		ON point_table.product_id =dannys_diner.sales.product_id
+GROUP BY customer_id;
+
+-- 10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
+
+
+SELECT customer_id,SUM(total_points) AS "total points"
+FROM
+(
+	WITH temp_table AS(SELECT sales.customer_id,product_name,menu.product_id,
+	CASE 
+		WHEN product_name = 'sushi' THEN price *10*2
+		WHEN order_date>=join_date AND order_date <  (join_date + interval '1 week') THEN price*10*2
+		ELSE price*10
+	END AS total_points
+	FROM dannys_diner.sales 
+		JOIN dannys_diner.menu 
+			ON dannys_diner.sales.product_id = dannys_diner.menu.product_id
+   		 JOIN dannys_diner.members
+    			ON dannys_diner.sales.customer_id= dannys_diner.members.customer_id
+   	WHERE order_date < '2021-02-01')
+SELECT * FROM temp_table) AS point_table 
+GROUP BY customer_id;
