@@ -1,1 +1,120 @@
 --This dataset is too big to insert into the code space, thus the code is stored in below link https://www.db-fiddle.com/f/rHJhRrXy5hbVBNJ6F6b9gJ/16
+
+----------Data Analysis Questions---------------------
+
+--1)How many customers has Foodie-Fi ever had?
+
+SELECT COUNT(DISTINCT customer_id)
+FROM foodie_fi.subscriptions;
+
+--2)What is the monthly distribution of trial plan start_date values for our dataset - use the start of the month as the group by value
+
+SELECT DATE_TRUNC ('month',start_date) AS start_of_month,COUNT(s.plan_id)
+FROM foodie_fi.subscriptions s
+JOIN foodie_fi.plans p
+	ON s.plan_id=p.plan_id
+WHERE plan_name ='trial'
+GROUP BY 1
+ORDER BY 1;
+
+--3)What plan start_date values occur after the year 2020 for our dataset? Show the breakdown by count of events for each plan_name
+
+SELECT plan_name,COUNT(s.plan_id)
+FROM foodie_fi.subscriptions s
+JOIN foodie_fi.plans p
+	ON s.plan_id=p.plan_id
+WHERE start_date > '2020-12-31'
+GROUP BY  plan_name;
+
+--4)What is the customer count and percentage of customers who have churned rounded to 1 decimal place?
+
+SELECT COUNT(customer_id), 
+ROUND((COUNT(customer_id) *100)::DECIMAL/((SELECT COUNT(DISTINCT customer_id)
+FROM foodie_fi.subscriptions)::DECIMAL),1) 
+FROM foodie_fi.subscriptions s
+JOIN foodie_fi.plans p
+	ON s.plan_id=p.plan_id
+WHERE s.plan_id=4;
+
+--5)How many customers have churned straight after their initial free trial - what percentage is this rounded to the nearest whole number?
+
+SELECT COUNT(customer_id),ROUND((COUNT(customer_id) *100)::DECIMAL/((SELECT COUNT(DISTINCT customer_id)
+FROM foodie_fi.subscriptions)::DECIMAL),0) 
+FROM(
+SELECT customer_id,start_date,plan_id,
+DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY start_date) AS rank
+FROM foodie_fi.subscriptions) AS rank_table
+WHERE plan_id=4 AND rank=2;
+
+--6)What is the number and percentage of customer plans after their initial free trial?
+
+SELECT plan_id,COUNT(customer_id),
+ROUND((COUNT(customer_id) *100)::DECIMAL/((SELECT COUNT(DISTINCT customer_id)
+FROM foodie_fi.subscriptions)::DECIMAL),1)
+FROM(
+SELECT customer_id,start_date,plan_id,
+DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY start_date) AS rank
+FROM foodie_fi.subscriptions) AS rank_table
+WHERE rank=2
+GROUP BY plan_id;
+
+--7)What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+
+SELECT plan_id,COUNT(customer_id),ROUND((COUNT(customer_id) *100)::DECIMAL/((SELECT COUNT(DISTINCT customer_id)
+FROM foodie_fi.subscriptions)::DECIMAL),1)
+FROM
+(SELECT customer_id,start_date,plan_id,
+DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY start_date DESC) AS rank
+FROM foodie_fi.subscriptions
+WHERE start_date<'2021-01-01') AS rank_table
+WHERE rank=1
+GROUP BY plan_id;
+--8)How many customers have upgraded to an annual plan in 2020?
+
+
+SELECT COUNT(DISTINCT customer_id)
+FROM foodie_fi.subscriptions
+WHERE plan_id=3 AND start_date <'2021-01-01';
+
+--9)How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
+
+CREATE TEMP TABLE annual_plan_start_date AS
+SELECT *
+FROM
+(SELECT customer_id,start_date,plan_id,
+DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY start_date) AS rank
+FROM foodie_fi.subscriptions
+WHERE plan_id=0 OR plan_id=3) AS rank_table
+WHERE rank=2;
+
+CREATE TEMP TABLE join_date AS
+SELECT *
+FROM
+(SELECT customer_id,start_date,plan_id,
+DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY start_date) AS rank
+FROM foodie_fi.subscriptions
+WHERE plan_id=0 OR plan_id=3) AS rank_table
+WHERE rank=1;
+
+SELECT AVG(apsd.start_date-jd.start_date)
+FROM annual_plan_start_date apsd
+JOIN join_date jd
+	ON apsd.customer_id=jd.customer_id;
+
+
+--10)Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+
+SELECT COUNT(customer_id)
+FROM 
+(SELECT (apsd.start_date-jd.start_date)::NUMERIC AS time_diff,apsd.customer_id
+FROM annual_plan_start_date apsd
+JOIN join_date jd
+	ON apsd.customer_id=jd.customer_id) AS temp_tabel
+GROUP BY 
+CASE 
+	WHEN time_diff>0 AND time_diff<31 THEN '0-30'
+    WHEN time_diff>30 AND time_diff<61 THEN '31-60'
+    ELSE 'etc'
+END ;
+
+--11)How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
